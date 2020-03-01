@@ -1,0 +1,226 @@
+---
+title: "Data 607 Week 5 Assignment: Tidying and Transforming Data"
+author: "Layla Quinones"
+date: "2/26/2020"
+output:
+  prettydoc::html_pretty:
+    toc: true
+    theme: cayman
+    highlight: github
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(RCurl)
+library(DT)
+library(kableExtra)
+```
+>Note: tidyverse, Rcurl, kableExtra, colorBrewer and prettydoc used. 
+
+# A. Load CSV file
+```{r}
+# Put CSV in a variable
+url = "https://raw.githubusercontent.com/MsQCompSci/607Week5/master/week5.csv"
+
+# Use getURL from RCurl to download the file.
+raw = getURL(url)
+
+#create a data frame.
+rawData = read.csv(text = raw, header = TRUE)
+
+#Show df
+kable(rawData)
+```
+
+# B. Tidy up the dataframe
+```{r}
+#Look at the names
+names(rawData)
+
+#renames the X.1 and X columns
+rawData <-rename(rawData, status = X.1) %>% rename(airline = X)
+names(rawData)
+
+#Filter in desired rows
+data <- rawData %>% filter(status == "delayed" | status == "on time")
+kable(data)
+
+#Fill in empty rows with NAs First then, airlines
+data[data==""]<-NA
+data <- fill(data, airline)
+kable(data)
+
+# Make every value a numeric value and removing the commas
+data$Seattle <- as.numeric(str_remove_all(data$Seattle, ","))
+data$Los.Angeles <- as.numeric(data$Los.Angeles)
+data$Phoenix <- as.numeric(str_remove_all(data$Phoenix, ","))
+data$San.Diego <- as.numeric(data$San.Diego)
+data$San.Francisco <- as.numeric(data$San.Francisco)
+
+kable(data)
+```
+
+> Approach: First I took a look at the column names in this dataframe and renamed them with names that made the data easy to interpret in a table using the `rename` function from `tidyverse` I replaced `X.1` with `status` indicating if the `status` of a flight was "on time" or "delayed". I also replaced `X` with `airline` indicating the airline that is associated with that data. Then upon reviewing the dataset I noticed that there was a column with `NA` values that I did not want to include so I used the `filter` function to only include the data that was associated with the "on time" or "delayed" values in the `status` column. Next I want each row to be labeled with the appropriate airline so I used the `fill` function to populate empty elements in the `airlines` column with the value before it. I did have some issues with using `fill` at first because the empty elements only had empty spaces in them, and `fill` only populates elements with `NA` values. In order to use `fill` I first had to place and `NA` anywhere there as a blank space, then call `fill` to populate rows. Lastly, I noticed that the numerical values have commas and are not numerical data types, so I removed all commas by column using `str_remove_all` and transformed to a numeric type using `as.numeric`. Now everything is labeled appropriately and can be interpreted easily.
+
+# C. Calculating totals of delayed and on time (sum of the numerical rows)
+```{r}
+total = c(0) #initialize column vector
+
+for (h in seq(1, dim(data)[1])){ #iterate through every row
+  sum = 0 #initialize sum variable
+ for (i in seq(3,7)){ #iterate through every column
+   sum = sum + data[h,i] #add to our sum variable
+ }
+  total = c(total, sum) #add the sum variable to our column vector
+}
+
+total = total[-1] # remove first element
+dataTotal <- data %>% mutate(totals = total) # add column to our dataframe (title of column is totals)
+kable(dataTotal)
+
+# We can also use the rowSums functions to calculate the totals
+kable(rowSums(data[3:7]))
+```
+
+> Approach: My goal here was to find the total number of delays and on time flights for both airlines, and add a new column into the dataframe with this information. First, I initialized two variables: `total` and `sum`. `total` will be used as a column vector I can add into my dataframe and `sum` holds the sum of each column. I used a nested for-loop to iterate through each row in the dataframe and through each column. Note: I only wanted to iterate through columns 3 through 7 because those are the columns with the number of flights in them (I am not interested in the first two columns which label airline and status of the flight). Alternativley, I could have used the `rowSums` function in pl;ace for this loop (as showns above). When the inner loop is done iterating through each element of the row, it takes the `sum` variable and adds it to the column vector `total`. When the outter loop has iterated through each row, I removed the first element of the `total` vector which was used to initialize it, then, using the `mutate` function from the `tidyverse` library, I added the new column to my dataframe and called this new dataframe `dataTotal`. 
+
+# D. Calculating totals for each airline at each location
+```{r}
+#Filter data for each airline
+alaska <- dataTotal %>% filter(airline == "ALASKA")
+amWest <- dataTotal %>% filter(airline == "AM WEST")
+
+#create a dataframe with the sum of flights from each location
+totalFlights<- data.frame(
+   airline = c("ALASKA", "AM WEST"), 
+   status = c("flights", "flights"),
+   Los.Angeles = c(sum(alaska$Los.Angeles), sum(amWest$Los.Angeles)),
+   Phoenix = c(sum(alaska$Phoenix), sum(amWest$Phoenix)),
+   San.Diego = c(sum(alaska$San.Diego), sum(amWest$San.Diego)) ,
+   San.Francisco = c(sum(alaska$San.Francisco),sum(amWest$San.Francisco)) ,
+   Seattle = c(sum(alaska$Seattle), sum(amWest$Seattle)),
+   totals = c(sum(alaska$totals),sum(amWest$totals)))
+
+kable(totalFlights)
+```
+> Approach: First I used `filter` to select only rows for a particular airline and saved those in their own dataframe: `alaska` and `amWest`. Then I took the sum of each column for each airline and saved the sums in a new dataframe called `totalFlights`. Note I made sure that the column names for each sum were consistent with the dataframe that I am editing throughout this process because I want to look at proportions by airline and city (so its important to keep things consistent).
+
+# E. Calculate Proportions
+```{r, warning = FALSE}
+#Create datafram with proportion for airline data (each entry was divided by the total for that airline in that city)
+propOne <- data.frame(
+   airline = data$airline, 
+   status = data$status,
+   Los.Angeles = c(data$Los.Angeles[1:2]/totalFlights$Los.Angeles[1],data$Los.Angeles[3:4]/totalFlights$Los.Angeles[2]),
+   Phoenix = c(data$Phoenix[1:2]/totalFlights$Phoenix[1], data$Los.Angeles[3:4]/totalFlights$Los.Angeles[2]),
+   San.Diego = c(data$San.Diego[1:2]/totalFlights$San.Diego[1], data$San.Diego[3:4]/totalFlights$San.Diego[2]) ,
+   San.Francisco = c(data$San.Francisco[1:2]/totalFlights$San.Francisco[1],data$San.Francisco[3:4]/totalFlights$San.Francisco[2]) ,
+   Seattle = c(data$Seattle[1:2]/totalFlights$Seattle[1], data$Seattle[3:4]/totalFlights$Seattle[2])
+  
+)
+kable(propOne)
+```
+
+> Approach: I am interested in comparing the proportion of delayed and on time flights for each airline at each location. To do this I created a dataframe called `propOne` and used the totals from the `totalFlights` dataframe to calculated proportions for each location. The resulting dataframe is one with proportions of flights from each airline for each city.
+
+# F. Looking at each airline separately
+```{r, fig.align="center"}
+#Tidy the data so that all numeric data is in one column
+propOne <- gather(propOne, "loc", "flights", Los.Angeles:Seattle)
+
+#Filter ALASKA data
+propOneAl <- propOne %>% filter(airline == 'ALASKA')
+kable(propOneAl)
+
+#Plot in a bar graph
+ggplot() +
+  geom_col(data = propOneAl, aes(x = loc, y = flights, fill = status), position = "dodge")+
+  theme_grey(base_size = 9) +
+  scale_fill_brewer(palette="Set3")+
+    theme(legend.position = "right",panel.background = element_rect(fill= "black", colour = "black",size = 2, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.5, linetype = 'solid',colour = "white"), 
+  panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "white")) +
+  labs(x = 'Location', y = 'proportion of airline', title = "Proportion of ALASKA Flights at Each Location" )
+
+#Filter AM WEST data
+propOneAm <- propOne %>% filter(airline == 'AM WEST')
+kable(propOneAm)
+
+#Plot in a bar graph
+ggplot() +
+  geom_col(data = propOneAm, aes(x = loc, y = flights, fill = status), position = "dodge")+
+  scale_fill_brewer(palette="Set2")+
+  theme_grey(base_size = 9) +
+  theme(legend.position = "right",panel.background = element_rect(fill= "black", colour = "black",size = 2, linetype = "solid"),panel.grid.major = element_line(size = 0.5, linetype = 'solid',colour = "white"),  panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "white")) +
+  labs(x = 'Location', y = 'proportion of airline', title = "Proportion of AM WEST Flights at Each Location" )
+```
+
+> Approach: First I wanted to get a feel for how the data for each airline compares to itself by location so I filtered the `propOne` dataframe that has all my proportions by airline and plotted result seperatley. Here we can see that obveously for both airlines they have more on time flights that delayed flights. Here we se similar trends happening for both ALASKA and AM WEST: Phoenix, Los Angeles and San Diego locations show the most proportion of flights leaving on time whereas, San.Francisco has the least proportion of flights leaving on time.
+
+# G. Comparing proportion of delays
+```{r, warning = FALSE, fig.align="center"}
+#Filter all delayed data
+propOneDelayed <- propOne %>% filter(status == 'delayed')
+kable(propOneDelayed)
+
+#Plot
+ggplot() +
+  geom_col(data = propOneDelayed, aes(x = loc, y = flights, fill = airline), position = "dodge")+
+  scale_fill_brewer(palette="Set4")+
+  theme_grey(base_size = 9) +
+  theme(legend.position = "right", panel.background = element_rect(fill = "black", colour = "black",size = 2, linetype = "solid"),panel.grid.major = element_line(size = 0.5, linetype = 'solid',colour = "white"), panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "white")) +
+  labs(x = 'Location', y = 'proportion of airline', title = "Proportion of Delayed Flights at Each Location" )
+```
+
+> Approach: Now things are starting to get interesting. After plotting the delays by location and by airline we can see that San Fransisco has the highest proportion of flights that are delayed for both airlines, followed by Seattle. We can also see that AM WEST has a higher proportion of delayes in every location compared to ALASKA.
+
+# H. Looking At Differences
+
+```{r, fig.align="center"}
+#Filter by airline and place them in seperate dataframes
+propOneAmDel <- propOneDelayed %>% filter(airline == "AM WEST")
+propOneAlDel <- propOneDelayed %>% filter(airline == "ALASKA") 
+
+#Create new dataframe with locations and differences
+diffDelayed <- data.frame(
+  Location = c("Los.Angeles", "Phoenix", "San.Diego", "San.Francisco", "Seattle"),
+  difference = c(propOneAmDel$flights - propOneAlDel$flights)
+)
+
+#arrange the data in order of least to greatest difference
+diffDelayed <- diffDelayed %>% arrange(difference)
+kable(diffDelayed)
+
+#plot
+ggplot() +
+  geom_col(data = diffDelayed, aes(x = reorder(Location, difference), y = difference), position = "dodge", fill = "lightgreen")+
+  theme_grey(base_size = 9) +
+  theme(legend.position = "right", panel.background = element_rect(fill = "black", colour = "black",size = 2, linetype = "solid"),panel.grid.major = element_line(size = 0.5, linetype = 'solid',colour = "white"), panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "white")) +
+  labs(x = 'Location', y = 'difference (AM WEST - ALASKA)', title = "Difference in Proportion of Delayed Flights at Each Location" )
+```
+
+> Approach: Lastly, I wanted to look at the differences in delays for each location to identify where is it that these airlines differ the most. First I filtered the proportion data for each airline and took the difference between delayes for each location and airline. I decided to do `AM WEST - ALASKA` based on my initial analysis and to avoid negative differences. Here we see that the airlines have the most difference in proportion of delays in San Francisco (which follows the trend we have been seeing in the data) and Phoenix. Surprisingly the least differences in proportion of delays are in Los Angeles. It would be interesting to investigate why there are such a discrepincy in San Francisco as compared to Los Angeles, and why one airline is more efficient at these locations than the other.
+
+# I. Total flights for airline
+```{r, warning = FALSE, fig.align = "center"}
+#total number of flights for each airline
+kable(totalFlights)
+
+#total number of delays/ontime for each airline
+kable(dataTotal)
+
+#Keep totals and airline and join
+totDelayed <- dataTotal %>% filter(status == "delayed") %>% select(airline, totals)
+totFlights <- totalFlights  %>% select(airline, totals)
+totalDF <- left_join(totDelayed, totFlights, by = 'airline') %>% rename(delayed= totals.x, all = totals.y)
+kable(totalDF)
+
+#plot
+ggplot() +
+  geom_col(data = totalDF, aes(x = reorder(airline,totalDF$delayed/totalDF$all) , y = totalDF$delayed/totalDF$all), position = "dodge", fill = "green")+
+  theme_grey(base_size = 9) +
+  theme(legend.position = "right", panel.background = element_rect(fill = "black", colour = "black",size = 2, linetype = "solid"),panel.grid.major = element_line(size = 0.5, linetype = 'solid',colour = "white"), panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "white")) +
+  labs(x = 'Airline', y = 'proportion', title = "Proportion of Delayed Flights for Each Airline" )
+```
+
+>Approach: I wanted to look at the total proportion of delays for each airline to see if maybe an increase in frequency of flights may have an impact on the number of delays. First I brought back the `totalFlights` table which shows the total number of flights for each airline and the `dataTotal` table which shows the total number of delays and on time flights for each airline. I used `filter` to filter out delay data only and `select` to take only the totals from each DF, then I joined these totals together in a new table called `totalDF`. I plotted the proportion of delays for each airline. We see here that although AM WEST has more total flights than ALASKA, their proportion of delays are less. This could indicate that whatever system they have in place to dprevent flight delays is efficient maybe due to the fact that they have more "experience" because they deal with a higher volume of flights. 
